@@ -1,6 +1,8 @@
 import logging
 import threading
 import json
+import asyncio
+import os
 
 from pathlib import Path
 from core.actor import Actor
@@ -48,6 +50,11 @@ class DisplayExtension(Actor):
         self._blink_visible = True
         self._timer_timeout = None
         self._timer_blink = None
+
+        self._peppy_process = None
+        self._peppy_timer_task = None
+        self._peppy_timeout = 15  
+        self._peppy_dir = "/home/pi/PeppyMeter"
 
     async def on_config_update(self, config):
         updated_config = config[self._name]
@@ -336,6 +343,12 @@ class DisplayExtension(Actor):
 
                 if self._playback_state == PlaybackState.PLAYING:
                     self.set_page(DisplayPage.NOW_PLAYING)
+                    #start peppy screensaver again once playback starts
+                    self.reset_peppy_timer()
+                elif self._playback_state == PlaybackState.PAUSED or self._playback_state == PlaybackState.STOPPED:
+                    if self._peppy_timer_task:
+                        self._peppy_timer_task.cancel()
+                    self._stop_peppy()
 
             elif (
                 event == "bluetooth_device_connected"
@@ -391,6 +404,8 @@ class DisplayExtension(Actor):
         if self._power_state == "standby":
             self.set_page(DisplayPage.STANDBY)
             self.start_timer_blink()
+        
+        self.reset_peppy_timer()
 
         logger.info("Started")
 
@@ -400,7 +415,75 @@ class DisplayExtension(Actor):
             self._timer_blink = None
         if self._controller is not None:
             self._controller.stop()
+
+        if self._peppy_timer_task:
+            self._peppy_timer_task.cancel()
+        await self._stop_peppy()
+
         logger.info("Stopped")
+
+    def reset_peppy_timer(self):
+        """resets peppyMeter timer."""
+        if self._peppy_timer_task:
+            self._peppy_timer_task.cancel()
+        
+        self._peppy_timer_task = asyncio.create_task(self._peppy_timer_loop())
+
+    async def _peppy_timer_loop(self):
+        try:
+            await asyncio.sleep(self._peppy_timeout)
+            await self._start_peppy()
+        except asyncio.CancelledError:
+            # Timer canceled before time ran out
+            pass
+
+    async def _start_peppy(self):
+        """Starts the PeppyMeter process on X-Server (DISPLAY=:0)."""
+        # If peppy already runs, do nothing
+        if self._peppy_process and self._peppy_process.returncode is None:
+            return
+
+        logger.info("Inactivity detected. Starting PeppyMeter...")
+        
+        # environmental variables
+        env = os.environ.copy()
+        env["DISPLAY"] = ":0"
+
+        try:
+            self._peppy_process = await asyncio.create_subprocess_exec(
+                "python3", "peppymeter.py",
+                cwd=self._peppy_dir,
+                env=env,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+        except Exception as e:
+            logger.error(f"Error while starting peppyMeter: {e}")
+
+    async def _stop_peppy(self):
+        """stops PeppyMeter if it runs."""
+        if self._peppy_process and self._peppy_process.returncode is None:
+            logger.info("stopping PeppyMeter...")
+            try:
+                # Send SIGTERM 
+                self._peppy_process.terminate()
+                
+                # give process time to end, otherwise kill
+                try:
+                    await asyncio.wait_for(self._peppy_process.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    self._peppy_process.kill()
+            except Exception as e:
+                logger.error(f"Error while stopping peppymeter: {e}")
+        
+        self._peppy_process = None
+
+    async def _handle_peppy_wakeup(self):
+        await self._stop_peppy()
+        self.reset_peppy_timer()
+
+    def on_peppy_wakeup(self):
+        asyncio.create_task(self._handle_peppy_wakeup())
 
     def set_page(self, page):
         self._page = page

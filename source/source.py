@@ -70,7 +70,7 @@ class SourceExtension(Actor):
                 state={"connected": False},
             )
             self._core.send(
-                target=["web", "display"], event="source_changed", source=self._current
+                target=["web", "display", "gpio"], event="source_changed", source=self._current
             )
             self._core.send(
                 target=["web", "display"],
@@ -112,7 +112,7 @@ class SourceExtension(Actor):
                 source = await self._core.request(start_method)
                 self._current = source
                 self._core.send(
-                    target=["web", "display"],
+                    target=["web", "display", "gpio"],
                     event="source_changed",
                     source=self._current,
                 )
