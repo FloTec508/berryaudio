@@ -26,6 +26,8 @@ class GpioExtension(Actor):
         self._config = config
         self._encoderCount = 0
         self._lastEncoderCount = 0
+        self._volEncoderCount = 0
+        self._lastVolEncoderCount = 0
         self._loop = asyncio.get_running_loop()
         self._encoder_mode = EncoderMode.DIRECTION
         self._source = None
@@ -105,8 +107,48 @@ class GpioExtension(Actor):
             while self._encoderCount != self._lastEncoderCount:
                 i = 1 if self._encoderCount > self._lastEncoderCount else -1
                 direction = "CW" if i == 1 else "CCW"
-                self.on_encoder(direction)
+                self.on_encoder(direction, EncoderMode.DIRECTION)
                 self._lastEncoderCount += i
+        if commandWord == "VOLENC":
+            try:
+                self._volEncoderCount = int(data)
+            except ValueError:
+                return
+
+            while self._volEncoderCount != self._lastVolEncoderCount:
+                i = 1 if self._volEncoderCount > self._lastVolEncoderCount else -1
+                direction = "CW" if i == 1 else "CCW"
+                self.on_encoder(direction, EncoderMode.VOLUME)
+                self._lastEncoderCount += i
+        elif commandWord == "CLICK":
+            buttonNum = 0;
+            try:
+                buttonNum = int(data)
+            except ValueError:
+                return
+            
+            if(buttonNum == 1):
+                await self._press_event("enter")
+            elif(buttonNum == 0):
+                await self._core.request("mixer.toggle_mute")
+        elif commandWord == "DBLCLICK":
+            buttonNum = 0;
+            try:
+                buttonNum = int(data)
+            except ValueError:
+                return
+            
+            if(buttonNum == 1):
+                await self._press_event("doubleclick")
+        elif commandWord == "LNGPRSS":
+            buttonNum = 0;
+            try:
+                buttonNum = int(data)
+            except ValueError:
+                return
+            
+            if(buttonNum == 1):
+                await self._press_event("longpress")
         elif commandWord == "ACTVBTN":
             try:
                 source = self._lookup_button_by_uri(int(data))
@@ -171,11 +213,11 @@ class GpioExtension(Actor):
         except Exception as e:
             logger.error(f"error while sending command to expander: {e}")
 
-    def on_encoder(self, direction):
-        if self._encoder_mode == EncoderMode.VOLUME:
-            _action = Command.VOLUME_UP if direction == "CW" else Command.VOLUME_DOWN
-        elif self._encoder_mode == EncoderMode.DIRECTION:
+    def on_encoder(self, direction, mode):
+        if mode == EncoderMode.DIRECTION:
             _action = Command.DOWN if direction == "CW" else Command.UP
+        elif mode == EncoderMode.VOLUME:
+            _action = Command.VOLUME_DOWN if direction == "CW" else Command.VOLUME_UP
         
         asyncio.run_coroutine_threadsafe(self._press_event(_action), self._loop)
 
