@@ -119,7 +119,7 @@ class GpioExtension(Actor):
                 i = 1 if self._volEncoderCount > self._lastVolEncoderCount else -1
                 direction = "CW" if i == 1 else "CCW"
                 self.on_encoder(direction, EncoderMode.VOLUME)
-                self._lastEncoderCount += i
+                self._lastVolEncoderCount += i
         elif commandWord == "CLICK":
             buttonNum = 0;
             try:
