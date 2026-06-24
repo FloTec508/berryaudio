@@ -59,6 +59,11 @@ class GpioExtension(Actor):
             lambda *args: self._interruptHandler(),
         )
 
+        #if interrupt is HIGH on boot, read data
+
+        if lgpio.gpio_read(self.gpio_handle, self.interrupt_pin) == 0:
+            self._interruptHandler()
+
         logger.debug(f"GPIO {self.interrupt_pin} für RISING-Edge Interrupts konfiguriert.")
     
     def _interruptHandler(self):

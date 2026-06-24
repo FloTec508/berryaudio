@@ -3,6 +3,8 @@ import threading
 import json
 import asyncio
 import os
+import time
+import subprocess
 
 from pathlib import Path
 from core.actor import Actor
@@ -471,6 +473,9 @@ class DisplayExtension(Actor):
                 # give process time to end, otherwise kill
                 try:
                     await asyncio.wait_for(self._peppy_process.wait(), timeout=1.0)
+                    time.sleep(0.2)
+                    cmd = "DISPLAY=:0 xdotool mousemove 640 20 click 1"
+                    subprocess.Popen(cmd, shell=True)
                 except asyncio.TimeoutError:
                     self._peppy_process.kill()
             except Exception as e:
